@@ -1,0 +1,25 @@
+digraph G {
+concentrate=true;
+splines="ortho";
+rankdir="LR";
+node_a5787b8a [label="35: check_directories()" name="readmegen::ReadmeGenerator.check_directories" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_4c1eb9d3 [label="54: code2flow_creater()" name="readmegen::ReadmeGenerator.code2flow_creater" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_c0b3cee3 [label="44: file_filter()" name="readmegen::ReadmeGenerator.file_filter" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_679efac1 [label="24: generate()" name="readmegen::ReadmeGenerator.generate" shape="rect" style="rounded,filled" fillcolor="#966F33" ];
+node_679efac1 -> node_a5787b8a [color="#E69F00" penwidth="2"];
+node_679efac1 -> node_4c1eb9d3 [color="#E69F00" penwidth="2"];
+node_679efac1 -> node_c0b3cee3 [color="#E69F00" penwidth="2"];
+subgraph cluster_ef2a06bc {
+    label="File: readmegen";
+    name="readmegen";
+    style="filled";
+    graph[style=dotted];
+    subgraph cluster_68785a30 {
+        node_679efac1 node_a5787b8a node_c0b3cee3 node_4c1eb9d3;
+        label="Class: ReadmeGenerator";
+        name="ReadmeGenerator";
+        style="filled";
+        graph[style=dotted];
+    };
+};
+}
