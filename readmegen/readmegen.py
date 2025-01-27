@@ -1,11 +1,104 @@
 import os
 import ast
-from .functions import *
+import code2flow
+import re
+
+def parse_restructuredtext(docstring):
+    """
+    Парсит docstring в формате reStructuredText и возвращает структурированные данные.
+
+    Поддерживает такие теги, как :param:, :type:, :rtype:, :return:, :note: и т.д.
+
+    :param docstring: Docstring для парсинга
+    :type docstring: str
+    :return: Словарь с ключами и значениями, извлеченными из docstring
+    :rtype: dict
+    """
+    # Стандартная структура возвращаемого результата
+    parsed_data = {
+        "description": "",
+        "params": {},
+        "return": None,
+        "rtype": None,
+        "notes": [],
+    }
+
+    if not docstring:
+        return parsed_data  # Возвращаем пустую структуру, если docstring отсутствует
+
+    current_section = "description"
+    lines = docstring.strip().split("\n")
+
+    param_pattern = re.compile(r":param (\w+)(?: \((.+)\))?: (.+)")
+    type_pattern = re.compile(r":type (\w+): (.+)")
+    rtype_pattern = re.compile(r":rtype: (.+)")
+    return_pattern = re.compile(r":return: (.+)")
+    note_pattern = re.compile(r":note: (.+)")
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        param_match = param_pattern.match(line)
+        if param_match:
+            param_name, param_type, param_desc = param_match.groups()
+            parsed_data["params"][param_name] = {
+                "description": param_desc,
+                "type": param_type or None,
+            }
+            current_section = "params"
+            continue
+
+        type_match = type_pattern.match(line)
+        if type_match:
+            param_name, param_type = type_match.groups()
+            if param_name in parsed_data["params"]:
+                parsed_data["params"][param_name]["type"] = param_type
+            else:
+                parsed_data["params"][param_name] = {
+                    "description": "",
+                    "type": param_type,
+                }
+            current_section = "params"
+            continue
+
+        rtype_match = rtype_pattern.match(line)
+        if rtype_match:
+            parsed_data["rtype"] = rtype_match.group(1)
+            current_section = "rtype"
+            continue
+
+        return_match = return_pattern.match(line)
+        if return_match:
+            parsed_data["return"] = return_match.group(1)
+            current_section = "return"
+            continue
+
+        note_match = note_pattern.match(line)
+        if note_match:
+            parsed_data["notes"].append(note_match.group(1))
+            current_section = "notes"
+            continue
+
+        # Если это продолжение текущего раздела
+        if current_section == "description":
+            parsed_data["description"] += f" {line}".strip()
+        elif current_section == "params":
+            last_param = list(parsed_data["params"].keys())[-1]
+            parsed_data["params"][last_param]["description"] += f" {line}".strip()
+        elif current_section == "return":
+            parsed_data["return"] += f" {line}".strip()
+        elif current_section == "notes":
+            parsed_data["notes"][-1] += f" {line}".strip()
+
+    return parsed_data
 
 
 def create_readme(inf: dict,
                   dir: str,
-                  name: str) -> None:
+                  name: str,
+                  add_inf: str = "") -> None:
     """
     Создает README на основе извлеченной информации
 
@@ -15,6 +108,8 @@ def create_readme(inf: dict,
     :type dir: str
     :param name: имя анализируемого файла
     :type name: str
+    :param add_inf: добавочная информация
+    :type add_inf: str
     :return: None
     :rtype: None
     """
@@ -41,11 +136,10 @@ def create_readme(inf: dict,
                 content.append(f"Тип возвращаемого объекта: {value['rtype']}\n")
             if value.get('notes'):
                 content.append(f"Замечания: {', '.join(value['notes'])}\n")
-
+    content.append(add_inf)
     readme_content = "\n".join(content)
     with open(readme_path, "w", encoding="utf-8") as file:
         file.write(readme_content)
-
     print(f"README создан: {readme_path}")
 
 
@@ -62,6 +156,39 @@ def check_directories(list_dirs: list) -> None:
             os.mkdir(dir_from_list)
 
 
+def extract_docstrings(file_path: str) -> dict:
+    """
+    Извлекает docstrings из Python файла
+    :param file_path: Путь до .py файла
+    :type file_path: str
+    :return: Словарь с докстрингами
+    :rtype: dict
+    """
+
+    with open(file_path, "r", encoding="utf-8") as file:
+        tree = ast.parse(file.read(), filename=file_path)
+
+    docstrings = {}
+    processed_methods = set()  # Чтобы не добавлять методы дважды
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            class_doc = parse_restructuredtext(ast.get_docstring(node))
+            docstrings[f"Class: {node.name}"] = class_doc
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef):
+                    func_name = f"{node.name}.{child.name}"
+                    func_doc = parse_restructuredtext(ast.get_docstring(child))
+                    docstrings[f"Function: {func_name}"] = func_doc
+                    processed_methods.add(child.name)  # Запоминаем метод
+        elif isinstance(node, ast.FunctionDef):
+            if node.name not in processed_methods:  # Проверяем, был ли уже обработан
+                func_doc = parse_restructuredtext(ast.get_docstring(node))
+                docstrings[f"Function: {node.name}"] = func_doc
+
+    return docstrings
+
+
 class ReadmeGenerator:
     """
     Класс генерирует описание вашего кода в python коде в стиле reStructuredText
@@ -74,7 +201,7 @@ class ReadmeGenerator:
         :param python_files: Список с .py файлами для code2flow
         :type python_files: list
         """
-        self.img_dir = "./img/"
+        self.img_dir = "../img/"
         self.readme_dir = "./description/"
         self.file_black_list = ["annotation.py", "__init__.py"]
         self.python_files = python_files
@@ -90,6 +217,8 @@ class ReadmeGenerator:
         """
         check_directories([self.img_dir, self.readme_dir])
         files = self.file_filter(directories_python_files)
+        for step in self.python_files:
+            code2flow.code2flow(step[0], step[1])
         for file in files:
             self.one_generate(os.path.join(directories_python_files, file), file)
 
@@ -107,8 +236,9 @@ class ReadmeGenerator:
         if not os.path.exists(source_file_path):
             print(f"Файл {source_file_path} не найден.")
             return
-        inf = self.extract_docstrings(source_file_path)
-        create_readme(inf, self.readme_dir, name)
+        inf = extract_docstrings(source_file_path)
+        add_inf = f"# Диаграмма \n ![Диаграмма потока](../img/{name.removesuffix('.py')}.png)"
+        create_readme(inf, self.readme_dir, name, add_inf=add_inf)
 
     def file_filter(self,
                     directories_python_files: str) -> list:
@@ -122,38 +252,4 @@ class ReadmeGenerator:
         files = [file for file in os.listdir(directories_python_files)
                  if file.endswith('.py') and file not in self.file_black_list]
         return files
-
-
-    def extract_docstrings(self,
-                           file_path: str) -> dict:
-        """
-        Извлекает docstrings из Python файла
-        :param file_path: Путь до .py файла
-        :type param: str
-        :return: Словарь с докстрингами
-        :rtype: dict
-        """
-
-        with open(file_path, "r", encoding="utf-8") as file:
-            tree = ast.parse(file.read(), filename=file_path)
-
-        docstrings = {}
-        processed_methods = set()  # Чтобы не добавлять методы дважды
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                class_doc = parse_restructuredtext(ast.get_docstring(node))
-                docstrings[f"Class: {node.name}"] = class_doc
-                for child in node.body:
-                    if isinstance(child, ast.FunctionDef):
-                        func_name = f"{node.name}.{child.name}"
-                        func_doc = parse_restructuredtext(ast.get_docstring(child))
-                        docstrings[f"Function: {func_name}"] = func_doc
-                        processed_methods.add(child.name)  # Запоминаем метод
-            elif isinstance(node, ast.FunctionDef):
-                if node.name not in processed_methods:  # Проверяем, был ли уже обработан
-                    func_doc = parse_restructuredtext(ast.get_docstring(node))
-                    docstrings[f"Function: {node.name}"] = func_doc
-
-        return docstrings
 
