@@ -1,14 +1,11 @@
 import re
-import os
-import textwrap
-from icecream import ic
 
-import re
 
 def parse_restructuredtext(docstring):
     """
     Парсит docstring в формате reStructuredText и возвращает структурированные данные.
-    Поддерживает такие теги, как :param:, :rtype:, :return:, :note: и т.д.
+
+    Поддерживает такие теги, как :param:, :type:, :rtype:, :return:, :note: и т.д.
 
     :param docstring: Docstring для парсинга
     :type docstring: str
@@ -30,11 +27,12 @@ def parse_restructuredtext(docstring):
     current_section = "description"
     lines = docstring.strip().split("\n")
 
-    param_pattern = re.compile(r":param (\w+)(?: \((\w+)\))?: (.+)")
+    param_pattern = re.compile(r":param (\w+)(?: \((.+)\))?: (.+)")
+    type_pattern = re.compile(r":type (\w+): (.+)")
     rtype_pattern = re.compile(r":rtype: (.+)")
     return_pattern = re.compile(r":return: (.+)")
     note_pattern = re.compile(r":note: (.+)")
-    # ic(linex)
+
     for line in lines:
         line = line.strip()
         if not line:
@@ -43,7 +41,23 @@ def parse_restructuredtext(docstring):
         param_match = param_pattern.match(line)
         if param_match:
             param_name, param_type, param_desc = param_match.groups()
-            parsed_data["params"][param_name] = {"description": param_desc, "type": param_type or None}
+            parsed_data["params"][param_name] = {
+                "description": param_desc,
+                "type": param_type or None,
+            }
+            current_section = "params"
+            continue
+
+        type_match = type_pattern.match(line)
+        if type_match:
+            param_name, param_type = type_match.groups()
+            if param_name in parsed_data["params"]:
+                parsed_data["params"][param_name]["type"] = param_type
+            else:
+                parsed_data["params"][param_name] = {
+                    "description": "",
+                    "type": param_type,
+                }
             current_section = "params"
             continue
 
