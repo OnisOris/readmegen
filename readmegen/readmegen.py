@@ -114,7 +114,7 @@ def create_readme(inf: dict,
     :rtype: None
     """
     os.makedirs(dir, exist_ok=True)
-    readme_path = os.path.join(dir, f"readme_{name.removesuffix('.py')}.md")
+    readme_path = os.path.join(dir, f"{name.removesuffix('.py')}.md")
     content = [f"# Файл {name}\n"]
 
     for key, value in inf.items():
